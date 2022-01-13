@@ -16,29 +16,32 @@ public class AudioClipSpectrum : MonoBehaviour
     public bool useDirector = false;
     public PlayableDirector director;
 
-    [Header("Spectrum")]
-    public int spectrumSize = 1024;
+    [Header("Analysis")]
+    public int windowSize = 1024;
+    public float timeStep = 0.1f;
+
+    [Header("Audio Amplitude")]
+    public float amplitude;
+
+    [Header("Audio Spectrum")]
     public float spectrumScale = 1;
     public float[] spectrum = new float[1024];
-    public RenderTexture spectrumTexture;
 
-    [Header("Compute Shader")]
-    public ComputeShader spectrumTextureShader;
-
-    [Header("Stuff to bind")]
+    [Header("Visual Effects")]
+    public string vfxPropertyName = "SpectrumTexture";
     public List<VisualEffect> vfx;
-    public string materialPropertyName = "_SpectrumTexture";
-    public List<Material> materials;
 
     [Range(0, 1)] public float spectrumDisplayRange = 1;
 
+    float[] _amplitude = new float[1];
     float[] _clipData = new float[2048];
     Complex[] _dataComplex = new Complex[2048];
 
-    ComputeBuffer _spectrumBuffer;
-    const int _numThreads = 8;
+    GraphicsBuffer _spectrumGraphicsBuffer;
 
     bool _initialized = false;
+
+    private float _timeStepTimer = 0;
 
 	private void OnEnable() {
 
@@ -54,15 +57,27 @@ public class AudioClipSpectrum : MonoBehaviour
         if (useDirector && !director)
             return;
 
-        if (spectrum.Length != spectrumSize || _clipData.Length != spectrumSize * 2 || _dataComplex.Length != spectrumSize * 2)
+        _timeStepTimer += Time.deltaTime;
+        if (_timeStepTimer < timeStep)
+            return;
+
+        _timeStepTimer = 0;
+
+        if (spectrum.Length != windowSize || _clipData.Length != windowSize * 2 || _dataComplex.Length != windowSize * 2)
             Initialize();
 
 		if (useDirector) {
-            clip.GetData(_clipData, Mathf.Clamp((int)(director.time * clip.frequency) - spectrumSize, 0, clip.samples - spectrumSize*2));
+            clip.GetData(_clipData, Mathf.Clamp((int)(director.time * clip.frequency) - windowSize, 0, clip.samples - windowSize * 2));
         } else {
-            clip.GetData(_clipData, Mathf.Clamp((int)(time * clip.frequency) - spectrumSize, 0, clip.samples - spectrumSize*2));
+            clip.GetData(_clipData, Mathf.Clamp((int)(time * clip.frequency) - windowSize, 0, clip.samples - windowSize * 2));
         }
-        
+
+        //Compute amplitude
+        amplitude = 0;
+        for(int i=0; i<_clipData.Length; i++)
+            amplitude += Mathf.Abs(_clipData[i]);
+        amplitude /= _clipData.Length;
+
         // copy the output data into the complex array
         for (int i = 0; i < _clipData.Length; i++) {
             _dataComplex[i] = new Complex(_clipData[i] * GetWindowCoefficient(i), 0);
@@ -71,8 +86,8 @@ public class AudioClipSpectrum : MonoBehaviour
         // calculate the FFT
         FFT.CalculateFFT(_dataComplex, spectrum, false);
 
-        //Update texture
-        UpdateSpectrumTexture();
+        //Update Graphics buffer
+        _spectrumGraphicsBuffer.SetData(spectrum);
     }
 
 	private void OnDisable() {
@@ -81,62 +96,41 @@ public class AudioClipSpectrum : MonoBehaviour
             CleanUp();
 	}
 
-	void CreateSpectrumTexture() {
-        spectrumTexture = new RenderTexture(spectrum.Length, 1, 0, RenderTextureFormat.ARGBFloat);
-        spectrumTexture.enableRandomWrite = true;
-        spectrumTexture.Create();
-    }
-
     void CreateSpectrumBuffer() {
 
-        if (_spectrumBuffer != null)
-            _spectrumBuffer.Release();
+        if (_spectrumGraphicsBuffer != null)
+            _spectrumGraphicsBuffer.Release();
 
-        _spectrumBuffer = new ComputeBuffer(spectrum.Length, sizeof(float));
-    }
-
-    void UpdateSpectrumTexture() {
-
-        _spectrumBuffer.SetData(spectrum);
-
-        spectrumTextureShader.Dispatch(0, spectrumSize / _numThreads, 1, 1);
+        _spectrumGraphicsBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, spectrum.Length, sizeof(float));
+        
     }
 
 	float GetWindowCoefficient(int position) {
 
-        return 0.5f - 0.5f * Mathf.Cos(2 * Mathf.PI * position / (spectrumSize * 2.0f - 1));
+        return 0.5f - 0.5f * Mathf.Cos(2 * Mathf.PI * position / (windowSize * 2.0f - 1));
 	}
 
     void Initialize() {
 
-        spectrumSize = Mathf.ClosestPowerOfTwo(spectrumSize);
+        windowSize = Mathf.ClosestPowerOfTwo(windowSize);
 
-        spectrum = new float[spectrumSize];
-        _clipData = new float[spectrumSize * 2];
-        _dataComplex = new Complex[spectrumSize * 2];
+        spectrum = new float[windowSize];
+        _clipData = new float[windowSize * 2];
+        _dataComplex = new Complex[windowSize * 2];
 
-        CreateSpectrumTexture();
         CreateSpectrumBuffer();
 
-        spectrumTextureShader.SetBuffer(0, "_SpectrumBuffer", _spectrumBuffer);
-        spectrumTextureShader.SetTexture(0, "_SpectrumTexture", spectrumTexture);
-
-        foreach (var v in vfx)
-            v.SetTexture("Spectrum", spectrumTexture);
-
-        foreach(var m in materials)
-            m.SetTexture(materialPropertyName, spectrumTexture);
+        foreach (var v in vfx) {
+            v.SetGraphicsBuffer("SpectrumBuffer", _spectrumGraphicsBuffer);
+        }
 
         _initialized = true;
     }
 
     void CleanUp() {
 
-        if (spectrumTexture)
-            spectrumTexture.Release();
-
-        if (_spectrumBuffer != null)
-            _spectrumBuffer.Release();
+        if (_spectrumGraphicsBuffer != null)
+            _spectrumGraphicsBuffer.Release();
 
         _initialized = false;
     }
