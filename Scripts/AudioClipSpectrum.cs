@@ -21,14 +21,18 @@ public class AudioClipSpectrum : MonoBehaviour
     public float timeStep = 0.1f;
 
     [Header("Audio Amplitude")]
+    public bool computeAmplitude = true;
+    public float amplitudeScale = 100;
     public float amplitude;
 
     [Header("Audio Spectrum")]
+    public bool computeSpectrum = true;
     public float spectrumScale = 1;
     public float[] spectrum = new float[1024];
 
     [Header("Visual Effects")]
-    public string vfxPropertyName = "SpectrumTexture";
+    public string vfxSpectrumPropertyName = "SpectrumBuffer";
+    public string vfxAmplitudePropertyName = "AudioAmplitude";
     public List<VisualEffect> vfx;
 
     [Range(0, 1)] public float spectrumDisplayRange = 1;
@@ -72,12 +76,33 @@ public class AudioClipSpectrum : MonoBehaviour
             clip.GetData(_clipData, Mathf.Clamp((int)(time * clip.frequency) - windowSize, 0, clip.samples - windowSize * 2));
         }
 
+        if (computeAmplitude)
+            UpdateAmplitude();
+
+        if (computeSpectrum)
+            UpdateSpectrum();
+
+    }
+
+	private void OnDisable() {
+
+        if (_initialized)
+            CleanUp();
+	}
+
+    void UpdateAmplitude() {
         //Compute amplitude
         amplitude = 0;
-        for(int i=0; i<_clipData.Length; i++)
+        for (int i = 0; i < _clipData.Length; i++)
             amplitude += Mathf.Abs(_clipData[i]);
         amplitude /= _clipData.Length;
+        amplitude *= amplitudeScale;
 
+        foreach (var v in vfx)
+            v.SetFloat(vfxAmplitudePropertyName, amplitude);
+    }
+
+    void UpdateSpectrum() {
         // copy the output data into the complex array
         for (int i = 0; i < _clipData.Length; i++) {
             _dataComplex[i] = new Complex(_clipData[i] * GetWindowCoefficient(i), 0);
@@ -89,12 +114,6 @@ public class AudioClipSpectrum : MonoBehaviour
         //Update Graphics buffer
         _spectrumGraphicsBuffer.SetData(spectrum);
     }
-
-	private void OnDisable() {
-
-        if (_initialized)
-            CleanUp();
-	}
 
     void CreateSpectrumBuffer() {
 
