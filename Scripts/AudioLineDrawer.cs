@@ -11,18 +11,19 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 
 	[Header("Timeline")]
 	public bool useTimeline = false;
-	public PlayableDirector director;
-	public float timeLength;
 
 	[Header("Drawing")]
 	public Vector3 lineStart;
 	public Vector3 lineEnd;
 	public float lineThickness = 0.1f;
-	[ColorUsage(true, true)] public Color lineColor = Color.white;
 	public float lineHeight = 1;
 	public float beforeAndAfterLength = 0;
 	public Vector2 timeRange = new Vector2(-1, 1);
-
+	[ColorUsage(true, true)] public Color lineColor = Color.white;
+	public bool useGradient = false;
+	[ColorUsage(true, true)] public Color lineColorGradientLow = Color.black;
+	[ColorUsage(true, true)] public Color lineColorGradientHigh = Color.white;
+	public Vector2 lineColorGradientHeightMinMax;
 	[Space]
 	public bool drawMask = false;
 	public float maskHeight = 0;
@@ -64,10 +65,10 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 					UpdateMask();
 				Draw.Polygon(_maskPath, lineColor);
 			} else {
-				if (useTimeline && director && timeLength > 0) {
+				if (useTimeline && audioClipAmplitude.director && audioClipAmplitude.timeLength > 0) {
 
-					float time = (float)director.time;
-					float waveformTimeStep = timeLength / audioClipAmplitude.waveform.Length;
+					float time = (float)audioClipAmplitude.director.time;
+					float waveformTimeStep = audioClipAmplitude.timeLength / audioClipAmplitude.waveform.Length;
 
 					int startIndex = Mathf.Max(0, Mathf.FloorToInt((time + timeRange.x) / waveformTimeStep));
 					int endIndex = Mathf.Min(audioClipAmplitude.waveform.Length, Mathf.CeilToInt((time + timeRange.y) / waveformTimeStep));
@@ -78,7 +79,7 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 
 					if(startIndex <= 0) {
 						end.y = start.y = audioClipAmplitude.waveform[0] * lineHeight;
-						DrawLine(start, end, lineColor);
+						DrawLine(start, end);
 					}
 
 					for(int i=startIndex; i<endIndex-1; i++) {
@@ -88,7 +89,7 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 						end.x = Mathf.Lerp(lineStart.x, lineEnd.x, (float)(i + 1) / audioClipAmplitude.waveform.Length);
 						end.y = audioClipAmplitude.waveform[i + 1] * lineHeight;
 
-						DrawLine(start, end, lineColor);
+						DrawLine(start, end);
 					}
 
 					start = end;
@@ -96,8 +97,8 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 						Mathf.Lerp(Mathf.Lerp(lineStart.x, lineEnd.x, (float)(endIndex-1) / audioClipAmplitude.waveform.Length), 
 								   Mathf.Lerp(lineStart.x, lineEnd.x, (float)(endIndex) / audioClipAmplitude.waveform.Length), 
 								   percent);
-					end.y = Mathf.Lerp(audioClipAmplitude.waveform[endIndex-1] * lineHeight, audioClipAmplitude.waveform[endIndex] * lineHeight, percent);
-					DrawLine(start, end, lineColor);
+					end.y = endIndex >= audioClipAmplitude.waveform.Length ? audioClipAmplitude.waveform[endIndex - 1] * lineHeight : Mathf.Lerp(audioClipAmplitude.waveform[endIndex-1] * lineHeight, audioClipAmplitude.waveform[endIndex] * lineHeight, percent);
+					DrawLine(start, end);
 
 				} else {
 
@@ -106,7 +107,7 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 
 					end.y = start.y = audioClipAmplitude.waveform[0] * lineHeight;
 
-					DrawLine(start, end, lineColor);
+					DrawLine(start, end);
 
 					// draw lines
 					for (int i = 0; i < audioClipAmplitude.waveform.Length - 1; i++) {
@@ -114,24 +115,30 @@ public class AudioLineDrawer : ImmediateModeShapeDrawer
 						end.x = Mathf.Lerp(lineStart.x, lineEnd.x, (float)(i + 1) / audioClipAmplitude.waveform.Length);
 						end.y = audioClipAmplitude.waveform[i + 1] * lineHeight;
 
-						DrawLine(start, end, lineColor);
+						DrawLine(start, end);
 					}
 
 					start = end;
 					end.x += beforeAndAfterLength;
 
-					DrawLine(start, end, lineColor);
+					DrawLine(start, end);
 				}
 			}
 		}
 	}
 
-	void DrawLine(Vector3 start, Vector3 end, Color color) {
+	void DrawLine(Vector3 start, Vector3 end) {
 
 		if (debugLineSegments) {
 			Draw.Line(start, end, Color.blue, Color.red);
-		} else { 
-			Draw.Line(start, end, color);
+		} else {
+			if (useGradient) {
+				Draw.Line(start, end, 
+					Color.Lerp(lineColorGradientLow, lineColorGradientHigh, Mathf.InverseLerp(lineColorGradientHeightMinMax.x, lineColorGradientHeightMinMax.y, start.y)), 
+					Color.Lerp(lineColorGradientLow, lineColorGradientHigh, Mathf.InverseLerp(lineColorGradientHeightMinMax.x, lineColorGradientHeightMinMax.y, end.y)));
+			} else {
+				Draw.Line(start, end, lineColor);
+			}
 		}
 	}
 

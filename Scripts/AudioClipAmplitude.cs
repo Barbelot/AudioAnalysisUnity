@@ -12,6 +12,7 @@ public class AudioClipAmplitude : MonoBehaviour
     [Header("Timeline")]
     public bool useDirector = false;
     public PlayableDirector director;
+    public float timeLength;
 
     [Header("Analysis")]
     public int windowSize = 8192;
@@ -23,6 +24,7 @@ public class AudioClipAmplitude : MonoBehaviour
     [Header("Debug")]
     [Tooltip("Show current timeline time but costly. Recommended for debugging purposes only.")] public bool forceInspectorRepaint = false;
     public float currentAmplitude;
+    public float currentWaveformValue;
     public float[] waveform;
 
     float[] _clipData;
@@ -49,8 +51,12 @@ public class AudioClipAmplitude : MonoBehaviour
         if (computeAmplitudeAtRuntime) {
             UpdateAmplitude();
         }
-            
 
+		if (waveform != null && director) {
+            if(waveform.Length > 0) {
+                currentWaveformValue = GetWaveformHeight(0);
+			}
+		}
     }
 
     private void OnDisable() {
@@ -116,4 +122,16 @@ public class AudioClipAmplitude : MonoBehaviour
 
         _initialized = false;
     }
+
+    public float GetWaveformHeight(float timeOffset) {
+
+        float time = (float)director.time + timeOffset;
+		float waveformTimeStep = timeLength / waveform.Length;
+		int previousIndex = Mathf.Min(waveform.Length - 2, Mathf.Max(Mathf.FloorToInt(time / waveformTimeStep), 0));
+		int nextIndex = Mathf.Max(1, Mathf.Min(Mathf.CeilToInt(time / waveformTimeStep), waveform.Length - 1));
+
+		return Mathf.Lerp(waveform[previousIndex],
+						  waveform[nextIndex],
+						  Mathf.InverseLerp(previousIndex * waveformTimeStep, nextIndex * waveformTimeStep, time));
+	}
 }
